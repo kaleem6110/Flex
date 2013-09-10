@@ -1,0 +1,582 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mx:Application xmlns:mx="http://www.adobe.com/2006/mxml" layout="absolute" creationComplete="{init();}" resize="{application1_resizeHandler(event);}">
+	<mx:RemoteObject id="mailMessagingService" destination="mailMessagingService" showBusyCursor="true" >		
+		<mx:method name="saveRegionMessage"  result="regionSavedHandler(event)" fault="handlerError(event)"/>
+		<mx:method name="deleteRegionMessage"  result="regionDeletedHandler(event)" fault="handlerError(event)"/>
+		<mx:method name="getAllUserModuleRegionMessages"  result="getRegionsHandler(event)" fault="handlerError(event)"/>	
+		<mx:method name="hasGeofenceProfile"  result="hasGeofence_resultHandler(event)" fault="handlerError(event)"/>		
+	</mx:RemoteObject>
+	<mx:Script><![CDATA[
+		import com.spacetimeinsight.epic.RegionMessage;
+		import com.spacetimeinsight.script.Util;
+		
+		import flash.events.MouseEvent;
+		
+		import mx.collections.ArrayCollection;
+		import mx.controls.Alert;
+		import mx.controls.dataGridClasses.DataGridColumn;
+		import mx.events.FlexEvent;
+		import mx.events.ListEvent;
+		import mx.events.ResizeEvent;
+		import mx.events.ValidationResultEvent;
+		import mx.formatters.DateFormatter;
+		import mx.rpc.events.FaultEvent;
+		import mx.rpc.events.ResultEvent;
+		import mx.utils.ObjectUtil;
+		import mx.utils.StringUtil;
+		import mx.validators.EmailValidator;
+		
+		public var serverUrl:String ;
+		[Bindable] 
+		public var coreServerUrl:String;
+		[Bindable] 
+		public var adminServerUrl:String ;
+		[Bindable] 
+		public var domainId:String;
+		[Bindable] 
+		public var moduleId:String;
+		[Bindable] 
+		public var languageId:String;
+		[Bindable] 
+		public var userId:String;
+		[Bindable] 
+		public var userUniqueId:String;
+		[Bindable] 
+		public var regionPrefix:String;
+		
+		private var emailValidator:EmailValidator;
+		
+		private var timeFgeormatter: DateFormatter; 
+		
+		private var isValid:int;
+		private var emailId:String;
+		
+		public function init() : void
+		{
+			serverUrl = Application.application.parameters.serverUrl;
+			domainId = Application.application.parameters.domainId;
+			languageId = Application.application.parameters.languageId;
+			userId = Application.application.parameters.userId;
+			userUniqueId = Application.application.parameters.userUniqueId;
+			moduleId = Application.application.parameters.moduleId;
+			regionPrefix = Application.application.parameters.regionPrefix;
+			mailMessagingService.channelSet = Util.buildChannelSet(serverUrl);
+			Util.loadAdminTheme(Application.application.parameters.theme, serverUrl);
+			lblMessage.text = "";
+			initData();
+			btnSave.enabled = false;
+			
+			emailValidator = new EmailValidator();
+			emailValidator.addEventListener(ValidationResultEvent.VALID, emailValidator_valid);
+			emailValidator.addEventListener(ValidationResultEvent.INVALID, emailValidator_invalid);
+			isValid=1;
+			emailId="";
+			exclusionNo.selected =true;
+			exclusionYes.enabled = false;;
+			exclusionNo.enabled = false;;
+			
+			mailMessagingService.hasGeofenceProfile( userUniqueId );
+			
+			return;
+		}// end function
+		private function emailValidator_valid(evt:ValidationResultEvent):void { 
+			
+			
+		}
+		
+		private function emailValidator_invalid(evt:ValidationResultEvent):void {
+			
+			setMessage("Please enter valid email(s)", "errortext");
+			isValid=0;
+			//email.text = "";
+		}
+		
+		public function btnRefresh_clickHandler(event:MouseEvent) : void
+		{
+			initData();
+			return;
+		}// end function
+		
+		public function regionDeletedHandler(event:ResultEvent) : void
+		{
+			setMessage("Successfully deleted", "infoMessage");
+			initData();
+			return;
+		}// end function
+		
+		public function _RBRegionsMsgMapping_DataGridColumn1_c() : DataGridColumn
+		{
+			var _loc_1:* = new DataGridColumn();
+			_loc_1.dataField = "name";
+			_loc_1.headerText = "Name";
+			return _loc_1;
+		}// end function
+		
+		public function _RBRegionsMsgMapping_DataGridColumn5_c() : DataGridColumn
+		{
+			var _loc_1:* = new DataGridColumn();
+			_loc_1.dataField = "endDateTime";
+			_loc_1.headerText = "End Date";
+			return _loc_1;
+		}// end function
+		
+		public function application1_resizeHandler(event:ResizeEvent) : void
+		{
+			this.invalidateDisplayList();
+			this.invalidateSize();
+			this.invalidateProperties();
+			return;
+		}// end function
+		
+		public function _RBRegionsMsgMapping_DateFormatter2_i() : DateFormatter
+		{
+			var _loc_1:* = new DateFormatter();
+			timeFgeormatter = _loc_1;
+			_loc_1.formatString = "JJ:NN:SS";
+			return _loc_1;
+		}// end function
+		
+		public function btnSave_clickHandler(event:MouseEvent) : void
+		{
+			isValid=1; 
+			var _loc_2:* = new RegionMessage();
+			_loc_2.exclusionEmail = exclusionEmail.text;
+			_loc_2.email = email.text;
+			_loc_2.subject = subject.text;
+			_loc_2.body = body.text;
+			_loc_2.name = rbRegionCmb.selectedItem.name;
+			_loc_2.recurPerDay = parseInt(recurPerDay.text);
+			_loc_2.triggerTime = parseInt(triggerTime.text);
+			if (rbRegionCmb.selectedItem.id != null)
+			{
+				_loc_2.id = rbRegionCmb.selectedItem.id;
+			}
+			if (startTimeTxt.text != "" && isNaN(Util.getTime(startTimeTxt.text)))
+			{
+				Alert.show("Please enter valid start time( HH:mm:ss)");
+				return;
+			}
+			if (endTimeTxt.text != "" && isNaN(Util.getTime(endTimeTxt.text)))
+			{
+				Alert.show("Please enter valid end time( HH:mm:ss)");
+				return;
+			}
+			var _loc_3:* = new Date(startDate.text);
+			if (_loc_3.getTime() > 0 && startTimeTxt.text == "")
+			{
+				startTimeTxt.text = "00:00:00";
+			}
+			_loc_3.setTime(_loc_3.getTime() + Util.getTime(startTimeTxt.text));
+			_loc_2.startDateTime = _RBRegionsMsgMapping_DateFormatter3_i().format(_loc_3);
+			var _loc_4:* = new Date(endDate.text);
+			if (_loc_4.getTime() > 0 && endTimeTxt.text == "")
+			{
+				endTimeTxt.text = "23:59:59";
+			}
+			_loc_4.setTime(_loc_4.getTime() + Util.getTime(endTimeTxt.text));
+			_loc_2.endDateTime = _RBRegionsMsgMapping_DateFormatter3_i().format(_loc_4);
+			if (_loc_3.getTime() > _loc_4.getTime())
+			{
+				Alert.show("Start date is greater than End date");
+				return;
+			}
+			if(inclusionYes.selected )
+			{
+				if(email.text!=null&&email.text.indexOf(";") >0 )
+				{
+					
+					var s:Array = email.text.split(";");
+					for(var str:String in s )
+					{  
+						if(str!="") { emailValidator.validate(s[str]); } 
+					}
+				}
+				else if(email.text!="") emailValidator.validate(email.text);
+				
+				
+				if(  isValid==0  )
+				{
+					Alert.show("Please enter valid inclusion email(s)"); return;
+				}
+			}else _loc_2.email="";
+			
+			
+			//Exclusion email
+			if(exclusionYes.selected )
+			{
+				if(exclusionEmail.text!=null&&exclusionEmail.text.indexOf(";") >0 )
+				{	
+					var d:Array = exclusionEmail.text.split(";");
+					for(var strr:String in d )
+					{  
+						if(strr!="") { emailValidator.validate(d[strr]); } 
+					}
+				}
+				else if(exclusionEmail.text!="") emailValidator.validate(exclusionEmail.text);
+				if(  isValid==0  ) Alert.show("Please enter valid exclusion email(s)"); return;
+				
+			}
+			else _loc_2.exclusionEmail ="";
+			
+			
+		
+			if(isValid==1)
+			mailMessagingService.saveRegionMessage(_loc_2, moduleId);
+		
+			
+			
+			return;
+		}// end function
+		
+		public function getRegionsHandler(event:ResultEvent) : void
+		{
+			var _loc_2:* = event.result as ArrayCollection;
+			rbRegionCmb.dataProvider = _loc_2;
+			var _loc_3:* = event.result as ArrayCollection;
+			var _loc_4:* = new ArrayCollection(ObjectUtil.copy(_loc_3.source) as Array);
+			if (new ArrayCollection(ObjectUtil.copy(_loc_3.source) as Array) != null)
+			{
+				_loc_4.removeItemAt(0);
+			}
+			regionDtls.dataProvider = _loc_4;
+			return;
+		}// end function
+		
+		public function setMessage(param1:String, param2:String) : void
+		{
+			lblMessage.text = param1;
+			lblMessage.styleName = param2;
+			return;
+		}// end function
+		
+		public function _RBRegionsMsgMapping_DataGridColumn4_c() : DataGridColumn
+		{
+			var _loc_1:* = new DataGridColumn();
+			_loc_1.dataField = "startDateTime";
+			_loc_1.headerText = "Start Date";
+			return _loc_1;
+		}// end function
+		
+		
+		public function _RBRegionsMsgMapping_DateFormatter1_i() : DateFormatter
+		{
+			var _loc_1:* = new DateFormatter();
+			//defaultDayFormatter = _loc_1;
+			_loc_1.formatString = "MM/DD/YYYY";
+			return _loc_1;
+		}// end function
+		
+		
+		public function _RBRegionsMsgMapping_DataGridColumn3_c() : DataGridColumn
+		{
+			var _loc_1:* = new DataGridColumn();
+			_loc_1.dataField = "body";
+			_loc_1.headerText = "Message";
+			return _loc_1;
+		}// end function
+		
+		public function btnDelete_clickHandler(event:MouseEvent) : void
+		{
+			mailMessagingService.deleteRegionMessage(rbRegionCmb.selectedItem.name, moduleId);
+			return;
+		}// end function
+		
+		public function _RBRegionsMsgMapping_DataGridColumn2_c() : DataGridColumn
+		{
+			var _loc_1:* = new DataGridColumn();
+			_loc_1.dataField = "subject";
+			_loc_1.headerText = "Subject";
+			return _loc_1;
+		}// end function
+		
+		public function regionSavedHandler(event:ResultEvent) : void
+		{
+			setMessage("Successfully saved", "infoMessage");
+			initData();
+			return;
+		}// end function
+		
+		public function initData() : void
+		{
+			btnSave.enabled = false;
+			subject.text = "";
+			body.text = "";
+			email.text="";
+			recurPerDay.text="";
+			triggerTime.text="";
+			mailMessagingService.getAllUserModuleRegionMessages(domainId, languageId, userId, userUniqueId, moduleId, regionPrefix);
+			hideInclusionRow();
+			hideExclusionRow();
+			return;
+		}// end function
+		
+		public function _RBRegionsMsgMapping_DateFormatter3_i() : DateFormatter
+		{
+			var _loc_1:* = new DateFormatter();
+			//dateFormatter = _loc_1;
+			_loc_1.formatString = "MM/DD/YYYY JJ:NN:SS";
+			return _loc_1;
+		}// end function
+		
+		public function handlerError(event:FaultEvent) : void
+		{
+			setMessage(event.fault.faultString, "errortext");
+			return;
+		}// end function
+		
+		public function rbRegionCmb_changeHandler(event:ListEvent) : void
+		{
+			isValid=1;
+			setMessage("", "infoMessage");
+			var _loc_2:* = rbRegionCmb.selectedItem as RegionMessage;
+			//Alert.show(" rbRegionCmb_changeHandler is called : _loc_2 is :"+_loc_2 );
+			if (_loc_2 != null)
+			{
+				exclusionEmail.text = _loc_2.exclusionEmail;
+				email.text=_loc_2.email;
+				subject.text = _loc_2.subject;
+				body.text = _loc_2.body;
+				recurPerDay.text = _loc_2.recurPerDay + "";
+				triggerTime.text = _loc_2.triggerTime + "";
+				startDate.text = _RBRegionsMsgMapping_DateFormatter1_i().format(_loc_2.startDateTime);
+				startTimeTxt.text = _RBRegionsMsgMapping_DateFormatter2_i().format(_loc_2.startDateTime);
+				endDate.text = _RBRegionsMsgMapping_DateFormatter1_i().format(_loc_2.endDateTime);
+				endTimeTxt.text = _RBRegionsMsgMapping_DateFormatter2_i().format(_loc_2.endDateTime);
+				if(email.text!=null&&email.text!="") 
+				{
+					inclusionYes.selected=true; inclusionNo.selected=false;emailRow.visible=true;emailRow.height=100; 
+						
+				}
+				else hideInclusionRow();
+				if(exclusionEmail.text!=null&&exclusionEmail.text!="")
+				{
+					exclusionYes.selected=true;exclusionNo.selected=false;exclusionEmailRow.visible=true;exclusionEmailRow.height=100; 
+				}
+				else hideExclusionRow();
+				if (startDate.text.length == 0)
+				{
+					startDate.text = _RBRegionsMsgMapping_DateFormatter1_i().format(new Date());
+				}
+				if (startTimeTxt.text == "")
+				{
+					startTimeTxt.text = "00:00:00";
+				}
+				if (_loc_2.name == "")
+				{
+					btnSave.enabled = false;
+					btnDelete.enabled = false;
+				}
+				else
+				{
+					btnSave.enabled = true;
+					btnDelete.enabled = true;
+				}
+			}
+			else
+			{
+				btnSave.enabled = false;
+				btnDelete.enabled = false;
+				
+			}
+			return;
+		}// end function
+		
+		protected function email_hideHandler(event:FlexEvent):void
+		{
+			// TODO Auto-generated method stub
+			emailRow.visible=false;
+			
+		}
+		
+		protected function inclusionYes_clickHandler(event:MouseEvent):void
+		{
+			// TODO Auto-generated method stub
+			
+			for each (var cb:CheckBox in [ inclusionYes, inclusionNo ])
+			{
+				if (cb != event.target)
+				{
+					cb.selected = false;
+					emailRow.visible=false;
+					emailRow.height=0;
+				}
+				if(inclusionYes.selected ) 
+				{
+					emailRow.visible=true;
+					emailRow.height=100;
+				}
+				else 
+				{
+					hideInclusionRow();
+				}
+					
+			}
+			
+			
+		}
+		
+		protected function hideInclusionRow()
+		{
+			emailRow.visible=false;
+			emailRow.height=0;
+			inclusionNo.selected=true;
+			inclusionYes.selected=false;
+		}
+		
+		protected function exclusionYes_clickHandler(event:MouseEvent):void
+		{
+			// TODO Auto-generated method stub
+			for each (var cb:CheckBox in [ exclusionYes, exclusionNo ])
+			{
+				if (cb != event.target)
+				{
+					cb.selected = false;
+				}
+			}
+			if(exclusionYes.selected ) 
+			{
+				exclusionEmailRow.visible=true;
+				exclusionEmailRow.height=100;
+			}
+			else 
+			{
+				hideExclusionRow();
+			}
+		}
+		
+		protected function hideExclusionRow(){
+			// TODO Auto-generated method stub
+			exclusionEmailRow.visible=false;
+			exclusionEmailRow.height=0;
+			exclusionNo.selected=true;
+			exclusionYes.selected=false;
+		}
+		
+		protected function exclusionEmail_hideHandler(event:FlexEvent):void
+		{
+			// TODO Auto-generated method stub
+			exclusionEmailRow.visible=false;
+		}
+		
+		protected function hasGeofence_resultHandler(event:ResultEvent):void
+		{
+			// TODO Auto-generated method stub
+			
+		}
+		
+	]]></mx:Script>
+	
+	<mx:VBox x="0" y="0" height="100%" width="100%" styleName="tundradashbordbody" verticalGap="0" paddingBottom="0" paddingLeft="0">
+		<mx:HBox x="0" y="0" height="15%" width="100%">
+			<mx:VBox width="100%" paddingLeft="15">
+				<mx:Label styleName="fieldlabel" text="Provides provision to create/update/Delete messages for danger zones."/>
+				<mx:Label id="lblMessage" styleName="message"/>
+			</mx:VBox>
+		</mx:HBox>
+		<mx:HBox x="0" y="0" height="90%" width="100%" paddingLeft="30" paddingBottom="10" horizontalAlign="left">
+			<mx:DataGrid id="regionDtls" width="650" height="100%" columns="{[_RBRegionsMsgMapping_DataGridColumn1_c(), _RBRegionsMsgMapping_DataGridColumn2_c(), _RBRegionsMsgMapping_DataGridColumn3_c(), _RBRegionsMsgMapping_DataGridColumn4_c(), _RBRegionsMsgMapping_DataGridColumn5_c()]}"/>
+			<mx:Grid width="25%" height="60%">
+				<mx:GridRow width="100%" height="100%" paddingBottom="10">
+					<mx:GridItem width="100%" height="100%" horizontalAlign="right">
+						<mx:Label text="Region Name" styleName="fieldlabel"/>
+					</mx:GridItem>
+					<mx:GridItem width="100%" height="100%" horizontalAlign="left">
+						<mx:ComboBox id="rbRegionCmb" styleName="combofield" width="200" labelField="name" change="{rbRegionCmb_changeHandler(event);}"/>
+					</mx:GridItem>
+				</mx:GridRow>
+				<mx:GridRow width="100%" height="100%" paddingBottom="10">
+					<mx:GridItem width="100%" height="100%" horizontalAlign="right">
+						<mx:Label text="Subject" styleName="fieldlabel"/>
+					</mx:GridItem>
+					<mx:GridItem width="100%" height="100%" horizontalAlign="left">
+						<mx:TextInput id="subject" width="200" toolTip="{subject.text}"/>
+					</mx:GridItem>
+				</mx:GridRow>
+				<mx:GridRow width="100%" height="100%" paddingBottom="10">
+					<mx:GridItem width="100%" height="100%" horizontalAlign="right">
+						<mx:Label text="Body" styleName="fieldlabel"/>
+					</mx:GridItem>
+					<mx:GridItem width="100%" height="100%" horizontalAlign="left">
+						<mx:TextArea id="body" width="200" height="150" toolTip="{body.text}"/>
+					</mx:GridItem>
+				</mx:GridRow>
+				<mx:GridRow width="100%" height="100%" paddingBottom="10">
+					<mx:GridItem width="100%" height="100%" horizontalAlign="right">
+						<mx:Label text="Start Date" styleName="fieldlabel"/>
+					</mx:GridItem>
+					<mx:GridItem width="100%" height="100%" horizontalAlign="left">
+						<mx:DateField id="startDate" yearNavigationEnabled="true" selectedDate="{new Date()}"/>
+						<mx:TextInput id="startTimeTxt" maxWidth="70" toolTip="HH:mm:ss" text="00:00:00"/>
+					</mx:GridItem>
+				</mx:GridRow>
+				<mx:GridRow width="100%" height="100%" paddingBottom="10">
+					<mx:GridItem width="100%" height="100%" horizontalAlign="right">
+						<mx:Label text="End Date" styleName="fieldlabel"/>
+					</mx:GridItem>
+					<mx:GridItem width="100%" height="100%" horizontalAlign="left">
+						<mx:DateField id="endDate" yearNavigationEnabled="true" selectedDate="{new Date()}"/>
+						<mx:TextInput id="endTimeTxt" maxWidth="70" toolTip="HH:mm:ss" text="23:59:59"/>
+					</mx:GridItem>
+				</mx:GridRow>
+				<mx:GridRow width="100%" height="100%" paddingBottom="10">
+					<mx:GridItem width="100%" height="100%" horizontalAlign="right">
+						<mx:Label text="Recurance per day [N Times]" styleName="fieldlabel"/>
+					</mx:GridItem>
+					<mx:GridItem width="100%" height="100%" horizontalAlign="left">
+						<mx:TextInput id="recurPerDay" width="200" toolTip="{recurPerDay.text}"/>
+					</mx:GridItem>
+				</mx:GridRow>
+				<mx:GridRow width="100%" height="100%" paddingBottom="10">
+					<mx:GridItem width="100%" height="100%" horizontalAlign="right">
+						<mx:Label text="Send message after [N sec(s)]" styleName="fieldlabel"/>
+					</mx:GridItem>
+					<mx:GridItem width="100%" height="100%" horizontalAlign="left">
+						<mx:TextInput id="triggerTime" width="200" toolTip="{triggerTime.text}"/>
+					</mx:GridItem>
+				</mx:GridRow>
+				<mx:GridRow width="100%" height="50%" >
+					<mx:GridItem width="100%" height="100%" horizontalAlign="right">
+						<mx:Label text="CC Emails" styleName="fieldlabel"/>
+					</mx:GridItem>
+					<mx:GridItem width="100%" height="100%" horizontalAlign="left">
+						<mx:CheckBox  id="inclusionYes" name="inclusion"  click="inclusionYes_clickHandler(event)" toolTip="Click to enter CC emails" >  </mx:CheckBox> <mx:Label text="Yes" styleName="fieldlabel"/>
+						<mx:CheckBox  id="inclusionNo"  name="inclusion"  click="inclusionYes_clickHandler(event)">  </mx:CheckBox> <mx:Label text="No" styleName="fieldlabel"/> 
+					</mx:GridItem>
+				</mx:GridRow>
+				<mx:GridRow width="100%" height="100%"  id="emailRow">
+					<mx:GridItem width="100%" height="100%" horizontalAlign="right">
+						<mx:Label text="" styleName="fieldlabel"/>
+					</mx:GridItem>
+					<mx:GridItem width="100%" height="100%" horizontalAlign="left">
+						<mx:TextArea   id="email" width="200" height="70" toolTip="Enter multiple emails seperated by semi-colon (;)" hide="email_hideHandler(event)" />
+					</mx:GridItem>
+				</mx:GridRow>
+				<mx:GridRow width="100%" height="100%" >
+					<mx:GridItem width="100%" height="100%" horizontalAlign="right">
+						<mx:Label text="Exclude Email" styleName="fieldlabel"/>
+					</mx:GridItem>
+					<mx:GridItem width="100%" height="100%" horizontalAlign="left">
+						<mx:CheckBox  id="exclusionYes" name="exclusion"   click="exclusionYes_clickHandler(event)" >  </mx:CheckBox> <mx:Label text="Yes" styleName="fieldlabel"/>
+						<mx:CheckBox  id="exclusionNo"  name="exclusion"  click="exclusionYes_clickHandler(event)"  >  </mx:CheckBox> <mx:Label text="No" styleName="fieldlabel"/> 
+					</mx:GridItem>
+				</mx:GridRow>
+				<mx:GridRow width="100%" height="100%"  id="exclusionEmailRow">
+					<mx:GridItem width="100%" height="100%" horizontalAlign="right">
+						<mx:Label text="" styleName="fieldlabel"/>
+					</mx:GridItem>
+					<mx:GridItem width="100%" height="100%" horizontalAlign="left">
+						<mx:TextArea   id="exclusionEmail" width="200" height="70" toolTip="Enter multiple emails seperated by semi-colon (;) to exclude  from Alerting"  hide="exclusionEmail_hideHandler(event)" />
+					</mx:GridItem>
+				</mx:GridRow>
+			</mx:Grid>
+			
+		</mx:HBox>
+		<mx:HBox styleName="buttonButtonBar" height="32" width="100%" verticalAlign="middle" horizontalAlign="left" paddingTop="0">
+			<mx:Spacer width="700"/>
+			<mx:Button id="btnSave" label="Save" styleName="buttons" useHandCursor="true" buttonMode="true" click="{btnSave_clickHandler(event);}"/>
+			<mx:Button id="btnDelete" enabled="true" label="Delete" styleName="buttons" useHandCursor="true" buttonMode="true" click="{btnDelete_clickHandler(event);}"/>
+			<mx:Button id="btnRefresh" label="Refresh" styleName="buttons" useHandCursor="true" buttonMode="true" click="{btnRefresh_clickHandler(event);}"/>
+		</mx:HBox>
+	</mx:VBox>
+	
+</mx:Application>
